@@ -27,16 +27,20 @@ def get_students(course_id):
 
 def check_last_activity(student):
     last_activity = student.get("last_activity_at")
-    return 'Si' if last_activity else 'No'
+    return '✔️' if last_activity else '❌'
 
 st.set_page_config(page_title="Participation Checker", page_icon="🚀")
 
 def main():
-    st.title("Participacion en el curso.")
-    st.write("Con esta app podras encontrar rapidamente que estudiantes participaron y cuales no en un curso de canvas.")
+    st.title("Participación en el curso.")
+    st.write("Con esta app podras encontrar rapidamente que estudiantes participaron y cuales no en un curso de canvas. Recuerda que puedes ordenar la tabla alfabeticamente o por participacion, asi como puedes filtrar solo por usuarios que NO hayan participado")
 
-    course_id = st.text_input("Ingrese el ID del curso:", "")
-    ver_participacion = st.button("Ver participación")
+    # course_id = st.text_input("Ingrese el ID del curso:", "")
+    # ver_participacion = st.button("Ver participación")
+    
+    with st.form("my_form"):
+        course_id = st.text_input("Ingrese el ID del curso:", "")
+        ver_participacion = st.form_submit_button("Ver participación")
 
     # Si el usuario hace clic en "Ver participación"
     if ver_participacion and course_id:
@@ -72,7 +76,7 @@ def main():
         mostrar_no_participantes = st.checkbox("Mostrar solo no participantes", value=False)
 
         if mostrar_no_participantes:
-            df_to_show = st.session_state['df_students'][st.session_state['df_students']["Ha participado"] == "No"]
+            df_to_show = st.session_state['df_students'][st.session_state['df_students']["Ha participado"] == "❌"]
         else:
             df_to_show = st.session_state['df_students']
 
