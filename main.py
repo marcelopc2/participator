@@ -32,7 +32,8 @@ def check_last_activity(student):
 st.set_page_config(page_title="Participation Checker", page_icon="🚀")
 
 def main():
-    st.title("Información de Estudiantes en Canvas")
+    st.title("Participacion en el curso.")
+    st.write("Con esta app podras encontrar rapidamente que estudiantes participaron y cuales no en un curso de canvas.")
 
     course_id = st.text_input("Ingrese el ID del curso:", "")
     ver_participacion = st.button("Ver participación")
@@ -60,8 +61,8 @@ def main():
                 # Guardamos todo en session_state
                 st.session_state['df_students'] = df
                 st.session_state['tiempo_total'] = tiempo_total
-                st.session_state['participantes_count'] = df[df["Ha participado"] == "Si"].shape[0]
-                st.session_state['no_participantes_count'] = df[df["Ha participado"] == "No"].shape[0]
+                st.session_state['participantes_count'] = df[df["Ha participado"] == "✔️"].shape[0]
+                st.session_state['no_participantes_count'] = df[df["Ha participado"] == "❌"].shape[0]
 
     # Comprobamos si ya tenemos datos en session_state
     if 'df_students' in st.session_state:
