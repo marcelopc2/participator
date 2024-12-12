@@ -29,7 +29,7 @@ def check_last_activity(student):
     last_activity = student.get("last_activity_at")
     return '✔️' if last_activity else '❌'
 
-st.set_page_config(page_title="Participation Checker", page_icon="🚀")
+st.set_page_config(page_title="Participation Checker", page_icon="🚀", layout="wide")
 
 def main():
     st.title("Participación en el curso.")
