@@ -77,6 +77,7 @@ def main():
 
         st.dataframe(df_to_show, use_container_width=True)
         st.write(f"**Tiempo de obtención de datos:** {st.session_state['tiempo_total']:.2f} segundos")
+        st.write(f"Cuanto tiempo te ahorraste 😉?")
 
         # Agregar botón de descarga en Excel
         output = io.BytesIO()
