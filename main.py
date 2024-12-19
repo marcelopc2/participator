@@ -147,6 +147,22 @@ def main():
                 'border': 1
             })
 
+            # Formato para ✔️ con borde y color verde
+            check_format = workbook.add_format({
+                'border': 1,
+                'align': 'center',
+                'valign': 'vcenter',
+                'font_color': 'green'
+            })
+
+            # Formato para ❌ con borde y color rojo
+            cross_format = workbook.add_format({
+                'border': 1,
+                'align': 'center',
+                'valign': 'vcenter',
+                'font_color': 'red'
+            })
+
             # Ajustar anchos de columnas con formato centrado
             worksheet.set_column(0, 0, 30)  # Columna 1
             worksheet.set_column(1, 1, 30)  # Columna 2
@@ -161,15 +177,31 @@ def main():
             for col_num, value in enumerate(df_to_show.columns.values):
                 worksheet.write(3, col_num, value, header_format)  # Fila de encabezados en startrow=3
 
-            # Aplicar formato con bordes a cada celda del DataFrame
+            # Aplicar formato con bordes y colores a cada celda del DataFrame
             for row in range(max_row):
                 for col in range(max_col):
-                    # La fila en Excel comienza en 4 (startrow=3 + 1) y la columna en 0
+                    # Obtener el valor de la celda
                     cell_value = df_to_show.iloc[row, col]
-                    worksheet.write(row + 4, col, cell_value, border_format)  # Fila 4 en adelante
 
-        output.seek(0)
+                    # Calcular la posición en Excel (fila y columna)
+                    excel_row = row + 4  # startrow=3 + 1 (índice 0)
+                    excel_col = col
 
+                    # Determinar el formato a aplicar
+                    if cell_value == '✔️':
+                        cell_format = check_format
+                    elif cell_value == '❌':
+                        cell_format = cross_format
+                    else:
+                        cell_format = border_format
+
+                    # Escribir la celda con el formato correspondiente
+                    worksheet.write(excel_row, excel_col, cell_value, cell_format)
+
+            # Opcional: Ajustar el alto de las filas para mejor visualización
+            worksheet.set_default_row(20)
+
+        output.seek(0)      
         st.download_button(
             label="Descargar un Excel",
             data=output,
