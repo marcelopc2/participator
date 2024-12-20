@@ -6,6 +6,7 @@ import time
 import io
 from datetime import datetime
 from unidecode import unidecode
+import re
 
 # Configuración inicial
 BASE_URL = 'https://canvas.uautonoma.cl/api/v1'
@@ -84,7 +85,7 @@ st.set_page_config(page_title="Participeitor 👌", page_icon="👌", layout="wi
 
 def main():
     st.title("Analizador y Generador de Reportes de participación") 
-    st.write("Con esta app podrás encontrar rápidamente qué estudiantes participaron y cuáles no en un curso de Canvas. Puedes además opcionalmente incluir las columnas para las tareas y ver quien entrego y quien no. Solo ingresa uno o mas IDs de un diplomado y espera la magia 🎩")
+    st.write("Con esta app podrás encontrar rápidamente qué estudiantes participaron y cuáles no en un curso de Canvas. Puedes además opcionalmente incluir las columnas para las tareas y ver quien entregó y quien no. Solo ingresa uno o mas IDs de un diplomado y espera la magia 🎩")
 
     with st.form("my_form"):
         courses_input = st.text_input("Ingrese los IDs de los cursos:", "")
@@ -124,8 +125,8 @@ def main():
                     rut = student.get('user', {}).get("sis_user_id")
                     user_id = student.get('user', {}).get('id')
                     data.append({
-                        "Nombres": sortable_name_list[1].strip(),
-                        "Apellidos": sortable_name_list[0].strip(),
+                        "Nombres": sortable_name_list[1].strip() if len(sortable_name_list)>1 else "",
+                        "Apellidos": sortable_name_list[0].strip() if len(sortable_name_list)>0 else "",
                         "RUT": f"{rut[:-1]}-{rut[-1]}" if rut and len(rut) > 1 else None,
                         "Correo": student.get('user', {}).get("login_id"),
                         "Matriculado": created.strftime("%d-%m-%Y %H:%M") if created else None,
@@ -207,17 +208,22 @@ def main():
             df = res['df'].copy()
             diplomado = f"{res['sub_account_info'].get('name')} - id: {res['sub_account_info'].get('id')}" if res['sub_account_info'] else "Subcuenta desconocida"
             curso_name = res['course_info'].get('name', f"Curso_{course_id}")
-            curso = f"{curso_name} - id: {res['course_info'].get('id')}" if res['course_info'] else f"Curso {course_id}"
+            invalid_chars = r'[\[\]\:\*\?\/\\\']'
+            curso_name_clean = re.sub(invalid_chars, '_', curso_name)
+            curso_name_clean = curso_name_clean.strip()
+            sheet_name = curso_name_clean[:31]
+
+            curso = f"{curso_name_clean} - id: {res['course_info'].get('id')}" if res['course_info'] else f"Curso {course_id}"
 
             if mostrar_no_participantes:
                 df_to_show = df[df["Ha participado"] == "❌"].copy()
             else:
                 df_to_show = df.copy()
 
-            # Reemplazar NaN por "" en df_to_show para evitar el error de NAN/INF
-            df_to_show = df_to_show.fillna("").sort_values(by="Nombres").reset_index(drop=True)
+            df_to_show = df_to_show.fillna("")
+            # Ordenar sin cambiar nombres a minúsculas, solo por "Nombres" o "Apellidos"
+            df_to_show = df_to_show.sort_values(by=["Apellidos"], key=lambda col: col.apply(lambda x: unidecode(str(x)))).reset_index(drop=True)
 
-            # Contar participantes/no_participantes nuevamente después del filtrado
             participantes_count = df_to_show[df_to_show["Ha participado"] == "✔️"].shape[0]
             no_participantes_count = df_to_show[df_to_show["Ha participado"] == "❌"].shape[0]
 
@@ -226,13 +232,13 @@ def main():
             st.markdown(f"**:green[Si participaron en la plataforma:]** {participantes_count} / **:red[No participaron en la plataforma:]** {no_participantes_count}")
             st.dataframe(df_to_show, use_container_width=True)
 
-            sheet_name = curso_name[:31]
             dfs_to_export.append((df_to_show, diplomado, curso, sheet_name))
 
             if st.session_state['include_assignments']:
                 columns_to_remove = ["RUT","Correo","Matriculado","Ultima actividad","Ha participado"]
                 cols_final = [c for c in df_to_show.columns if c not in columns_to_remove]
 
+                # Aquí no se tocan Nombres/Apellidos, no normalizamos a minúsculas
                 if "Nombres" in cols_final:
                     cols_final.remove("Nombres")
                 cols_final.insert(0, "Nombres")
@@ -243,7 +249,7 @@ def main():
 
                 base_df = df_to_show[cols_final]
                 num_tasks = base_df.shape[1] - 2
-                courses_tasks_info.append((curso_name, num_tasks))
+                courses_tasks_info.append((curso_name_clean, num_tasks))
                 minimal_dfs.append(base_df)
 
         output = io.BytesIO()
@@ -285,7 +291,6 @@ def main():
                 })
 
                 max_row, max_col = df_to_show.shape
-                # df_to_show ya tiene fillna("")
                 worksheet.set_column(0, max_col - 1, 20, center_format)
                 worksheet.set_column(0, 0, 30) # Nombres
                 worksheet.set_column(1, 1, 30) # Apellidos
@@ -311,9 +316,9 @@ def main():
             if st.session_state['include_assignments'] and minimal_dfs:
                 summary_df = None
                 for i, mdf in enumerate(minimal_dfs):
-                    for col in ["Nombres", "Apellidos"]:
-                        if col not in mdf.columns:
-                            mdf[col] = ""
+                    # No normalizamos nombres a minúsculas, solo aseguramos no haya NaN
+                    mdf = mdf.fillna("")
+                    # Hacemos el merge normal
                     col_order = ["Nombres","Apellidos"] + [c for c in mdf.columns if c not in ["Nombres","Apellidos"]]
                     mdf = mdf[col_order]
                     if summary_df is None:
@@ -329,6 +334,16 @@ def main():
                                 col_names.append(c)
                         summary_df.columns = col_names
 
+                summary_df = summary_df.fillna("")
+
+                # Eliminar posibles filas duplicadas en base a Nombres y Apellidos
+                summary_df = summary_df.drop_duplicates(subset=["Nombres","Apellidos"], keep='first')
+                # Eliminar filas donde Nombres o Apellidos estén vacíos
+                summary_df = summary_df[(summary_df["Nombres"] != "") & (summary_df["Apellidos"] != "")]
+
+                # Ordenar y resetear index
+                summary_df = summary_df.sort_values(by=["Apellidos","Nombres"]).reset_index(drop=True)
+
                 task_intervals = []
                 current_col = 2
                 for (course_name, num_tasks) in courses_tasks_info:
@@ -338,13 +353,10 @@ def main():
                         task_intervals.append((course_name, start_col, end_col))
                         current_col = end_col + 1
 
-                # Reemplazar NaN por "" en summary_df
-                summary_df = summary_df.fillna("")
-
-                # Datos a partir de fila 6 (row=5)
-                summary_df.to_excel(writer, index=False, header=False, startrow=5, sheet_name="Resumen Diplomado")
+                summary_sheet_name = "Resumen Diplomado"
+                summary_df.to_excel(writer, index=False, header=False, startrow=5, sheet_name=summary_sheet_name)
                 workbook = writer.book
-                worksheet = writer.sheets["Resumen Diplomado"]
+                worksheet = writer.sheets[summary_sheet_name]
 
                 title_format = workbook.add_format({'bold': True, 'font_size': 14})
                 header_format = workbook.add_format({
@@ -380,21 +392,17 @@ def main():
                 worksheet.set_column(1, 1, 30) # Apellidos
                 worksheet.set_column(2, max_col - 1, 20)
 
-                # Fila 2, 3, 4 sin nada en A,B
-                # Fila 3(row=2): cursos en C+
                 for (course_name, start_col, end_col) in task_intervals:
                     worksheet.merge_range(2, start_col, 2, end_col, course_name, header_format)
 
-                # Fila 4(row=3): A,B vacías
-                # Fila 5(row=4): A="Nombres", B="Apellidos" y tareas en C+
-                worksheet.write(3, 0, "Nombres", header_format)
-                worksheet.write(3, 1, "Apellidos", header_format)
+                # Fila 5 (row=4): Nombres, Apellidos y tareas
+                worksheet.write(4, 0, "Nombres", header_format)
+                worksheet.write(4, 1, "Apellidos", header_format)
                 for col_num, value in enumerate(summary_df.columns.values):
                     if col_num >= 2:
-                        worksheet.write(3, col_num, value, header_format)
+                        worksheet.write(4, col_num, value, header_format)
 
-                # Escribir datos desde fila 6(row=5)
-                data_start_row = 4
+                data_start_row = 5
                 for row_i in range(max_row):
                     for col_i in range(max_col):
                         cell_value = summary_df.iloc[row_i, col_i]
