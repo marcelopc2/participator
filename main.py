@@ -12,7 +12,6 @@ BASE_URL = 'https://canvas.uautonoma.cl/api/v1'
 TOKEN = config("TOKEN")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
-
 def get_students(course_id):
     url = f"{BASE_URL}/courses/{course_id}/enrollments"
     params = {"type[]": "StudentEnrollment", "per_page": 100}
@@ -23,7 +22,7 @@ def get_students(course_id):
             students.extend(response.json())
             url = response.links.get('next', {}).get('url')
         else:
-            st.error(f"Error {response.status_code}: No se pudo obtener la lista de estudiantes.")
+            st.error(f"Error {response.status_code}: No se pudo obtener la lista de estudiantes del curso {course_id}.")
             break
     return students
 
@@ -36,15 +35,15 @@ def get_course_info(course_id):
     if response.status_code == 200:
         return response.json()
     else:
-        st.error(f"Error {response.status_code}: No se pudo obtener la información del curso.")
+        st.error(f"Error {response.status_code}: No se pudo obtener la información del curso {course_id}.")
         return None
-    
+
 def get_subaccount_info(sub_account_id):
     response = requests.get(f"{BASE_URL}/accounts/{sub_account_id}", headers=HEADERS)
     if response.status_code == 200:
         return response.json()
     else:
-        st.error(f"Error {response.status_code}: No se pudo obtener la información de la subcuenta.")
+        st.error(f"Error {response.status_code}: No se pudo obtener la información de la subcuenta {sub_account_id}.")
         return None
 
 def get_assignments(course_id):
@@ -60,7 +59,7 @@ def get_assignments(course_id):
             else:
                 url = None
         else:
-            st.error(f"Error {response.status_code} al obtener tareas: {response.text}")
+            st.error(f"Error {response.status_code} al obtener tareas del curso {course_id}: {response.text}")
             return []
     return assignments
 
@@ -77,53 +76,75 @@ def get_submissions(course_id, assignment_id):
             else:
                 url = None
         else:
-            st.error(f"Error {response.status_code} al obtener entregas: {response.text}")
+            st.error(f"Error {response.status_code} al obtener entregas de la tarea {assignment_id}: {response.text}")
             return []
     return submissions
 
-st.set_page_config(page_title="Participation Checker", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Participeitor 👌", page_icon="👌", layout="wide")
 
 def main():
-    st.title("Participación en el curso.")
-    st.write("Con esta app podrás encontrar rápidamente qué estudiantes participaron y cuáles no en un curso de Canvas. Puedes además opcionalmente incluir las columnas para las tareas (excluyendo las autoevaluaciones).")
+    st.title("Analizador y Generador de Reportes de participación") 
+    st.write("Ingresa uno o más IDs de curso. Si incluyes tareas, se generará una hoja resumen con la nueva estructura. user_id se ha removido de todas las hojas.")
 
     with st.form("my_form"):
-        course_id = st.text_input("Ingrese el ID del curso:", "")
+        courses_input = st.text_input("Ingrese los IDs de los cursos:", "")
         include_assignments = st.checkbox("Incluir entregas en tareas", value=False)
         ver_participacion = st.form_submit_button("Ver participación")
 
-    if ver_participacion and course_id:
-        start_time = time.time()  # Se define start_time aquí
-        with st.spinner("Obteniendo información..."):
-            students = get_students(course_id)
+    if ver_participacion and courses_input:
+        cleaned_input = courses_input.replace(',', ' ')
+        course_ids = [c.strip() for c in cleaned_input.split() if c.strip().isdigit()]
 
-            if students:
+        if not course_ids:
+            st.error("No se han ingresado IDs de curso válidos.")
+            return
+
+        start_time = time.time()
+        st.session_state['results'] = {}
+        diplomado_name = None
+
+        with st.spinner("Obteniendo información de todos los cursos..."):
+            for course_id in course_ids:
+                students = get_students(course_id)
+                if not students:
+                    continue
+
                 data = []
                 for student in students:
                     participation = check_last_activity(student)
-                    created = datetime.strptime(student.get("created_at"), "%Y-%m-%dT%H:%M:%SZ")
-                    activity = datetime.strptime(student.get("last_activity_at"), "%Y-%m-%dT%H:%M:%SZ") if student.get("last_activity_at") else None
-                    sortable_name_list = student.get('user').get('sortable_name').split(',')
+                    created_str = student.get("created_at")
+                    created = datetime.strptime(created_str, "%Y-%m-%dT%H:%M:%SZ") if created_str else None
+                    activity_str = student.get("last_activity_at")
+                    activity = datetime.strptime(activity_str, "%Y-%m-%dT%H:%M:%SZ") if activity_str else None
+
+                    sortable_name_list = student.get('user', {}).get('sortable_name', '').split(',')
+                    if len(sortable_name_list) < 2:
+                        sortable_name_list = [sortable_name_list[0] if sortable_name_list else "", ""]
+
                     rut = student.get('user', {}).get("sis_user_id")
                     user_id = student.get('user', {}).get('id')
                     data.append({
                         "Nombres": sortable_name_list[1].strip(),
                         "Apellidos": sortable_name_list[0].strip(),
-                        "RUT": f"{rut[:-1]}-{rut[-1]}" if rut else None,
+                        "RUT": f"{rut[:-1]}-{rut[-1]}" if rut and len(rut) > 1 else None,
                         "Correo": student.get('user', {}).get("login_id"),
-                        "Matriculado": created.strftime("%d-%m-%Y %H:%M"),
+                        "Matriculado": created.strftime("%d-%m-%Y %H:%M") if created else None,
                         "Ultima actividad": activity.strftime("%d-%m-%Y %H:%M") if activity else "Nunca",
                         "Ha participado": participation,
                         "user_id": user_id
                     })
-                    
+                
                 df = pd.DataFrame(data)
 
-                # Obtener información del curso y subcuenta
                 course_info = get_course_info(course_id)
+                if not course_info:
+                    continue
                 sub_account_info = get_subaccount_info(course_info.get("account_id"))
 
-                # Si se incluye la opción de buscar tareas y entregas
+                if diplomado_name is None and sub_account_info:
+                    diplomado_name = sub_account_info.get('name', 'Diplomado')
+
+                # Procesar tareas antes de remover user_id
                 if include_assignments:
                     assignments = get_assignments(course_id)
                     filtered_assignments = []
@@ -132,15 +153,12 @@ def main():
                         if 'autoevaluacion' not in normalized_name:
                             filtered_assignments.append(a)
 
-                    assignment_submissions = {}
                     for a in filtered_assignments:
                         submissions = get_submissions(course_id, a['id'])
                         delivered = set()
                         for s in submissions:
                             wfs = s.get('workflow_state')
                             grd = s.get('grade')
-                            # Consideramos "Entregado" si:
-                            # workflow_state in ['submitted', 'graded'] y grade > 0
                             if wfs in ['submitted', 'graded']:
                                 if grd is not None:
                                     try:
@@ -150,124 +168,257 @@ def main():
                                         delivered.add(s['user_id'])
                                 else:
                                     delivered.add(s['user_id'])
+                        task_name = a['name']
+                        df[task_name] = df['user_id'].apply(lambda uid: "✔️" if uid in delivered else "❌")
 
-                        assignment_submissions[a['id']] = (a['name'], delivered)
+                # Remover user_id
+                if 'user_id' in df.columns:
+                    df = df.drop(columns=['user_id'])
 
-                    for a_id, (a_name, submitted_ids) in assignment_submissions.items():
-                        df[a_name] = df['user_id'].apply(lambda uid: "✔️" if uid in submitted_ids else "❌")
+                participantes_count = df[df["Ha participado"] == "✔️"].shape[0]
+                no_participantes_count = df[df["Ha participado"] == "❌"].shape[0]
 
-                # Aquí calculamos end_time y tiempo_total inmediatamente después de obtener y procesar todos los datos
-                end_time = time.time()
-                tiempo_total = end_time - start_time
+                st.session_state['results'][course_id] = {
+                    'df': df,
+                    'participantes_count': participantes_count,
+                    'no_participantes_count': no_participantes_count,
+                    'course_info': course_info,
+                    'sub_account_info': sub_account_info
+                }
 
-                # Guardamos todo en session_state, incluido el tiempo total
-                st.session_state['df_students'] = df
-                st.session_state['tiempo_total'] = tiempo_total
-                st.session_state['participantes_count'] = df[df["Ha participado"] == "✔️"].shape[0]
-                st.session_state['no_participantes_count'] = df[df["Ha participado"] == "❌"].shape[0]
-                st.session_state['course_info'] = course_info
-                st.session_state['sub_account_info'] = sub_account_info
-                st.session_state['include_assignments'] = include_assignments
+        end_time = time.time()
+        tiempo_total = end_time - start_time
+        st.session_state['tiempo_total'] = tiempo_total
+        st.session_state['include_assignments'] = include_assignments
+        st.session_state['diplomado_name'] = diplomado_name if diplomado_name else "Diplomado"
 
-    if 'df_students' in st.session_state:
-        diplomado = f"{st.session_state['sub_account_info'].get('name')} - id: {st.session_state['sub_account_info'].get('id')}"
-        curso = f"{st.session_state['course_info'].get('name')} - id: {st.session_state['course_info'].get('id')}"
-
-        st.markdown(f'<span style="font-size: 28px;">{diplomado}</span>', unsafe_allow_html=True)
-        st.markdown(f'<span style="font-size: 22px;">*{curso}*</span>', unsafe_allow_html=True)
-        st.markdown(f"**:green[Si participaron:]** {st.session_state['participantes_count']} / **:red[No participaron:]** {st.session_state['no_participantes_count']}")
-
-        mostrar_no_participantes = st.checkbox("Mostrar solo no participantes", value=False)
-
-        df = st.session_state['df_students']
-        if mostrar_no_participantes:
-            df_to_show = df[df["Ha participado"] == "❌"]
-        else:
-            df_to_show = df
-
-        # Ocultamos la columna user_id de la vista
-        if 'user_id' in df_to_show.columns:
-            df_to_show = df_to_show.drop(columns=['user_id'])
-
-        st.dataframe(df_to_show, use_container_width=True)
-
-        # Aquí ya leemos el tiempo desde session_state
+    if 'results' in st.session_state and st.session_state['results']:
+        st.write(f" ")
         st.write(f"**Tiempo de obtención de datos:** {st.session_state['tiempo_total']:.2f} segundos")
         st.write("¿Cuánto tiempo te ahorraste 😉?")
+        mostrar_no_participantes = st.checkbox("Mostrar solo no participantes", value=False)
+        st.divider()
 
-        # Botón de descarga en Excel
+        dfs_to_export = []
+        minimal_dfs = []
+        courses_tasks_info = []
+
+        for course_id, res in st.session_state['results'].items():
+            df = res['df'].copy()
+            diplomado = f"{res['sub_account_info'].get('name')} - id: {res['sub_account_info'].get('id')}" if res['sub_account_info'] else "Subcuenta desconocida"
+            curso_name = res['course_info'].get('name', f"Curso_{course_id}")
+            curso = f"{curso_name} - id: {res['course_info'].get('id')}" if res['course_info'] else f"Curso {course_id}"
+
+            if mostrar_no_participantes:
+                df_to_show = df[df["Ha participado"] == "❌"].copy()
+            else:
+                df_to_show = df.copy()
+
+            # Reemplazar NaN por "" en df_to_show para evitar el error de NAN/INF
+            df_to_show = df_to_show.fillna("").sort_values(by="Nombres").reset_index(drop=True)
+
+            # Contar participantes/no_participantes nuevamente después del filtrado
+            participantes_count = df_to_show[df_to_show["Ha participado"] == "✔️"].shape[0]
+            no_participantes_count = df_to_show[df_to_show["Ha participado"] == "❌"].shape[0]
+
+            st.markdown(f'<span style="font-size: 28px;">{diplomado}</span>', unsafe_allow_html=True)
+            st.markdown(f'<span style="font-size: 22px;">*{curso}*</span>', unsafe_allow_html=True)
+            st.markdown(f"**:green[Si participaron en la plataforma:]** {participantes_count} / **:red[No participaron en la plataforma:]** {no_participantes_count}")
+            st.dataframe(df_to_show, use_container_width=True)
+
+            sheet_name = curso_name[:31]
+            dfs_to_export.append((df_to_show, diplomado, curso, sheet_name))
+
+            if st.session_state['include_assignments']:
+                columns_to_remove = ["RUT","Correo","Matriculado","Ultima actividad","Ha participado"]
+                cols_final = [c for c in df_to_show.columns if c not in columns_to_remove]
+
+                if "Nombres" in cols_final:
+                    cols_final.remove("Nombres")
+                cols_final.insert(0, "Nombres")
+
+                if "Apellidos" in cols_final:
+                    cols_final.remove("Apellidos")
+                cols_final.insert(1, "Apellidos")
+
+                base_df = df_to_show[cols_final]
+                num_tasks = base_df.shape[1] - 2
+                courses_tasks_info.append((curso_name, num_tasks))
+                minimal_dfs.append(base_df)
+
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_to_show.to_excel(writer, index=False, startrow=3, sheet_name='Datos')
-            workbook = writer.book
-            worksheet = writer.sheets['Datos']
+            # Hojas individuales
+            for (df_to_show, diplomado, curso, sheet_name) in dfs_to_export:
+                df_to_show.to_excel(writer, index=False, startrow=3, sheet_name=sheet_name)
+                workbook = writer.book
+                worksheet = writer.sheets[sheet_name]
 
-            title_format = workbook.add_format({'bold': True, 'font_size': 14})
-            subtitle_format = workbook.add_format({'italic': True, 'font_size': 12})
-            worksheet.write(0, 0, diplomado, title_format)
-            worksheet.write(1, 0, curso, subtitle_format)
+                title_format = workbook.add_format({'bold': True, 'font_size': 14})
+                subtitle_format = workbook.add_format({'italic': True, 'font_size': 12})
+                worksheet.write(0, 0, diplomado, title_format)
+                worksheet.write(1, 0, curso, subtitle_format)
 
-            center_format = workbook.add_format({'align': 'center'})
-            border_format = workbook.add_format({
-                'border': 1,
-                'align': 'center',
-                'valign': 'vcenter'
-            })
-            header_format = workbook.add_format({
-                'bold': True,
-                'text_wrap': True,
-                'valign': 'top',
-                'border': 1
-            })
-            check_format = workbook.add_format({
-                'border': 1,
-                'align': 'center',
-                'valign': 'vcenter',
-                'font_color': 'green'
-            })
-            cross_format = workbook.add_format({
-                'border': 1,
-                'align': 'center',
-                'valign': 'vcenter',
-                'font_color': 'red'
-            })
+                center_format = workbook.add_format({'align': 'center'})
+                border_format = workbook.add_format({
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter'
+                })
+                header_format = workbook.add_format({
+                    'bold': True,
+                    'text_wrap': True,
+                    'valign': 'top',
+                    'border': 1
+                })
+                check_format = workbook.add_format({
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter',
+                    'font_color': 'green'
+                })
+                cross_format = workbook.add_format({
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter',
+                    'font_color': 'red'
+                })
 
-            worksheet.set_column(0, 0, 30) 
-            worksheet.set_column(1, 1, 30) 
-            worksheet.set_column(2, 2, 15, center_format)
-            worksheet.set_column(3, 3, 40)
-            worksheet.set_column(4, len(df_to_show.columns) - 1, 20, center_format)
+                max_row, max_col = df_to_show.shape
+                # df_to_show ya tiene fillna("")
+                worksheet.set_column(0, max_col - 1, 20, center_format)
+                worksheet.set_column(0, 0, 30) # Nombres
+                worksheet.set_column(1, 1, 30) # Apellidos
+                worksheet.set_column(3, 3, 40) # Correo más ancho
 
-            max_row, max_col = df_to_show.shape
+                for col_num, value in enumerate(df_to_show.columns.values):
+                    worksheet.write(3, col_num, value, header_format)
 
-            for col_num, value in enumerate(df_to_show.columns.values):
-                worksheet.write(3, col_num, value, header_format)
+                for row in range(max_row):
+                    for col in range(max_col):
+                        cell_value = df_to_show.iloc[row, col]
+                        if cell_value == '✔️':
+                            cell_format = check_format
+                        elif cell_value == '❌':
+                            cell_format = cross_format
+                        else:
+                            cell_format = border_format
+                        worksheet.write(row + 4, col, cell_value, cell_format)
 
-            for row in range(max_row):
-                for col in range(max_col):
-                    cell_value = df_to_show.iloc[row, col]
-                    excel_row = row + 4
-                    excel_col = col
-                    if cell_value == '✔️':
-                        cell_format = check_format
-                    elif cell_value == '❌':
-                        cell_format = cross_format
+                worksheet.set_default_row(20)
+
+            # Hoja resumen solo si hay minimal_dfs y include_assignments
+            if st.session_state['include_assignments'] and minimal_dfs:
+                summary_df = None
+                for i, mdf in enumerate(minimal_dfs):
+                    for col in ["Nombres", "Apellidos"]:
+                        if col not in mdf.columns:
+                            mdf[col] = ""
+                    col_order = ["Nombres","Apellidos"] + [c for c in mdf.columns if c not in ["Nombres","Apellidos"]]
+                    mdf = mdf[col_order]
+                    if summary_df is None:
+                        summary_df = mdf
                     else:
-                        cell_format = border_format
-                    worksheet.write(excel_row, excel_col, cell_value, cell_format)
+                        summary_df = pd.merge(summary_df, mdf, on=["Nombres","Apellidos"], how="outer", suffixes=("", "_dup"))
+                        col_names = []
+                        for c in summary_df.columns:
+                            if c.endswith("_dup"):
+                                new_c = c.replace("_dup", "")
+                                col_names.append(new_c)
+                            else:
+                                col_names.append(c)
+                        summary_df.columns = col_names
 
-            worksheet.set_default_row(20)
+                task_intervals = []
+                current_col = 2
+                for (course_name, num_tasks) in courses_tasks_info:
+                    if num_tasks > 0:
+                        start_col = current_col
+                        end_col = current_col + num_tasks - 1
+                        task_intervals.append((course_name, start_col, end_col))
+                        current_col = end_col + 1
+
+                # Reemplazar NaN por "" en summary_df
+                summary_df = summary_df.fillna("")
+
+                # Datos a partir de fila 6 (row=5)
+                summary_df.to_excel(writer, index=False, header=False, startrow=5, sheet_name="Resumen Diplomado")
+                workbook = writer.book
+                worksheet = writer.sheets["Resumen Diplomado"]
+
+                title_format = workbook.add_format({'bold': True, 'font_size': 14})
+                header_format = workbook.add_format({
+                    'bold': True,
+                    'text_wrap': True,
+                    'valign': 'top',
+                    'border': 1,
+                    'align': 'center'
+                })
+                border_format = workbook.add_format({
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter'
+                })
+                check_format = workbook.add_format({
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter',
+                    'font_color': 'green'
+                })
+                cross_format = workbook.add_format({
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter',
+                    'font_color': 'red'
+                })
+
+                worksheet.write(0, 0, st.session_state['diplomado_name'], title_format)
+
+                max_row, max_col = summary_df.shape
+
+                worksheet.set_column(0, 0, 30) # Nombres
+                worksheet.set_column(1, 1, 30) # Apellidos
+                worksheet.set_column(2, max_col - 1, 20)
+
+                # Fila 2, 3, 4 sin nada en A,B
+                # Fila 3(row=2): cursos en C+
+                for (course_name, start_col, end_col) in task_intervals:
+                    worksheet.merge_range(2, start_col, 2, end_col, course_name, header_format)
+
+                # Fila 4(row=3): A,B vacías
+                # Fila 5(row=4): A="Nombres", B="Apellidos" y tareas en C+
+                worksheet.write(3, 0, "Nombres", header_format)
+                worksheet.write(3, 1, "Apellidos", header_format)
+                for col_num, value in enumerate(summary_df.columns.values):
+                    if col_num >= 2:
+                        worksheet.write(3, col_num, value, header_format)
+
+                # Escribir datos desde fila 6(row=5)
+                data_start_row = 4
+                for row_i in range(max_row):
+                    for col_i in range(max_col):
+                        cell_value = summary_df.iloc[row_i, col_i]
+                        if cell_value == '✔️':
+                            cell_format = check_format
+                        elif cell_value == '❌':
+                            cell_format = cross_format
+                        else:
+                            cell_format = border_format
+                        worksheet.write(data_start_row + row_i, col_i, cell_value, cell_format)
+
+                worksheet.set_default_row(20)
 
         output.seek(0)
+        file_name = f"{st.session_state['diplomado_name'] if 'diplomado_name' in st.session_state else 'Diplomado'}.xlsx"
         st.download_button(
-            label="Descargar un Excel",
+            label="Descargar Reporte de Participación",
             data=output,
-            file_name=f'participacion_curso_id_{st.session_state["course_info"].get("id")}.xlsx',
+            file_name=file_name,
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
-    elif ver_participacion and not course_id:
-        st.error("Por favor, ingrese un ID de curso válido antes de ver la participación.")
+    elif ver_participacion and not courses_input:
+        st.error("Por favor, ingrese al menos un ID de curso válido antes de ver la participación.")
 
 if __name__ == "__main__":
     main()
