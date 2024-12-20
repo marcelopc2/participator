@@ -84,7 +84,7 @@ st.set_page_config(page_title="Participeitor 👌", page_icon="👌", layout="wi
 
 def main():
     st.title("Analizador y Generador de Reportes de participación") 
-    st.write("Ingresa uno o más IDs de curso. Si incluyes tareas, se generará una hoja resumen con la nueva estructura. user_id se ha removido de todas las hojas.")
+    st.write("Con esta app podrás encontrar rápidamente qué estudiantes participaron y cuáles no en un curso de Canvas. Puedes además opcionalmente incluir las columnas para las tareas y ver quien entrego y quien no. Solo ingresa uno o mas IDs de un diplomado y espera la magia 🎩")
 
     with st.form("my_form"):
         courses_input = st.text_input("Ingrese los IDs de los cursos:", "")
