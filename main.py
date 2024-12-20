@@ -354,7 +354,7 @@ def main():
                         current_col = end_col + 1
 
                 summary_sheet_name = "Resumen Diplomado"
-                summary_df.to_excel(writer, index=False, header=False, startrow=5, sheet_name=summary_sheet_name)
+                summary_df.to_excel(writer, index=False, header=False, startrow=4, sheet_name=summary_sheet_name)
                 workbook = writer.book
                 worksheet = writer.sheets[summary_sheet_name]
 
@@ -395,14 +395,13 @@ def main():
                 for (course_name, start_col, end_col) in task_intervals:
                     worksheet.merge_range(2, start_col, 2, end_col, course_name, header_format)
 
-                # Fila 5 (row=4): Nombres, Apellidos y tareas
-                worksheet.write(4, 0, "Nombres", header_format)
-                worksheet.write(4, 1, "Apellidos", header_format)
+                worksheet.write(3, 0, "Nombres", header_format)
+                worksheet.write(3, 1, "Apellidos", header_format)
                 for col_num, value in enumerate(summary_df.columns.values):
                     if col_num >= 2:
-                        worksheet.write(4, col_num, value, header_format)
+                        worksheet.write(3, col_num, value, header_format)
 
-                data_start_row = 5
+                data_start_row = 4
                 for row_i in range(max_row):
                     for col_i in range(max_col):
                         cell_value = summary_df.iloc[row_i, col_i]
