@@ -4,7 +4,7 @@ import pandas as pd
 from decouple import config
 import time
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from unidecode import unidecode
 import re
 
@@ -85,7 +85,7 @@ st.set_page_config(page_title="Participeitor 👌", page_icon="👌", layout="wi
 
 def main():
     st.title("Analizador y Generador de Reportes de participación") 
-    st.write("Con esta app podrás encontrar rápidamente qué estudiantes participaron y cuáles no en un curso de Canvas. Puedes además opcionalmente incluir las columnas para las tareas y ver quien entregó y quien no. Solo ingresa uno o mas IDs de un diplomado y espera la magia 🎩")
+    st.write("Con esta app podrás encontrar rápidamente qué estudiantes participaron y cuáles no en un curso de Canvas. Puedes además opcionalmente incluir las columnas para las tareas y ver quien entregó y quien no. Solo ingresa uno o mas IDs de un diplomado y espera la magia 🎩, recuerda que el orden en que pones los IDs es el orden en que saldran en el reporte.")
 
     with st.form("my_form"):
         courses_input = st.text_input("Ingrese los IDs de los cursos:", "")
@@ -117,6 +117,11 @@ def main():
                     created = datetime.strptime(created_str, "%Y-%m-%dT%H:%M:%SZ") if created_str else None
                     activity_str = student.get("last_activity_at")
                     activity = datetime.strptime(activity_str, "%Y-%m-%dT%H:%M:%SZ") if activity_str else None
+                    total_activity = student.get("total_activity_time")
+                    horas = total_activity // 3600
+                    minutos = (total_activity % 3600) // 60
+                    segundos = total_activity % 60
+                    total_activity_formated = f"{horas:02}:{minutos:02}:{segundos:02}"
 
                     sortable_name_list = student.get('user', {}).get('sortable_name', '').split(',')
                     if len(sortable_name_list) < 2:
@@ -132,6 +137,7 @@ def main():
                         "Matriculado": created.strftime("%d-%m-%Y %H:%M") if created else None,
                         "Ultima actividad": activity.strftime("%d-%m-%Y %H:%M") if activity else "Nunca",
                         "Ha participado": participation,
+                        "Actividad total": total_activity_formated,
                         "user_id": user_id
                     })
                 
