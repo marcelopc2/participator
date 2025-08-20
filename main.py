@@ -118,10 +118,13 @@ def main():
                     activity_str = student.get("last_activity_at")
                     activity = datetime.strptime(activity_str, "%Y-%m-%dT%H:%M:%SZ") if activity_str else None
                     total_activity = student.get("total_activity_time")
-                    horas = total_activity // 3600
-                    minutos = (total_activity % 3600) // 60
-                    segundos = total_activity % 60
-                    total_activity_formated = f"{horas:02}:{minutos:02}:{segundos:02}"
+                    if total_activity is not None:
+                        horas = total_activity // 3600
+                        minutos = (total_activity % 3600) // 60
+                        segundos = total_activity % 60
+                        total_activity_formated = f"{horas:02}:{minutos:02}:{segundos:02}"
+                    else:
+                        total_activity_formated = "00:00:00" 
 
                     sortable_name_list = student.get('user', {}).get('sortable_name', '').split(',')
                     if len(sortable_name_list) < 2:
